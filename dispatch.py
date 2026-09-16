@@ -157,8 +157,8 @@ def compute_optimal_dispatch(*, hourly_prices, constraints):
     ccgt_power=constraints["ccgt_power"]
 
     possible_states=compute_possible_states(
-        min_off_time=min_on_time, 
-        min_on_time=min_off_time,
+        min_off_time=min_off_time, 
+        min_on_time=min_on_time,
         )
 
     total_hours=len(hourly_prices)
