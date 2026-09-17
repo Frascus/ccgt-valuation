@@ -81,7 +81,7 @@ decomposition as a waterfall chart (`plotting.plot_value_waterfall`).
 ccgt-valuation/
 ├── data/
 │   └── raw/                # PUN and TTF price data + SOURCES.md
-├── output/                 # generated results (git-ignored): dispatch CSV + summary
+├── output/                 # generated results (git-ignored): dispatch CSV + summary + value waterfall plot
 ├── data_loader.py          # load and align hourly PUN with daily TTF prices
 ├── dispatch.py             # spark spread, allowed transitions, DP solver
 ├── plotting.py             # spark-spread and value-decomposition plots
@@ -126,7 +126,8 @@ pip install -r requirements.txt
 
 Then open `analysis.ipynb` and run the cells: it loads the price data, computes
 the spark spread, runs the three strategies, shows the waterfall decomposition,
-and writes the optimal hourly dispatch and a text summary to `output/`.
+and writes the optimal hourly dispatch and a text summary to `output/`, where
+also the value waterfall plot is saved.
 
 ## Modelling assumptions
 
@@ -139,9 +140,3 @@ and writes the optimal hourly dispatch and a text summary to `output/`.
   CO₂, and start-up costs); fixed plant costs and taxes are out of scope, as they
   do not affect the hour-by-hour dispatch decision.
 
-## Possible extension
-
-Valuing the plant on *future* (unknown) prices via Monte Carlo simulation of
-mean-reverting price scenarios — running the same DP on each simulated path and
-taking the distribution of values — is the natural next step. Not yet
-implemented.
