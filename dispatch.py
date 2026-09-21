@@ -229,7 +229,23 @@ def count_startups(is_on_dispatch):
         .sum()
     )
 
-    
+
+def monte_carlo_profits(*, year_generator, constraints, n_scenarios):
+        """
+        Run n_scenarios: generate a synthetic year, solve optimal dispatch,
+        collect the optimal profit of each. Return the list of profits.
+        """
+        profits=[]
+        n_startups=[]
+        for _ in range(n_scenarios):
+            synthetic_year=year_generator()
+            is_on_dispatch, optimal_profit=compute_optimal_dispatch(
+                hourly_prices=synthetic_year,
+                constraints=constraints
+            )
+            profits.append(optimal_profit)
+            n_startups.append(count_startups(is_on_dispatch))
+        return profits, n_startups
 
 
 

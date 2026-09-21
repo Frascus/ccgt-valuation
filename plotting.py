@@ -97,3 +97,23 @@ def plot_value_waterfall(*, spark_spread, is_on, capacity,
     ax.set_title("From unconstrained profits to optimal constraint profits")
     ax.set_ylim(0, value_ideal * 1.10)
     return fig, ax
+
+
+def plot_distribution(values, *, title="", xlabel="", bins=40):
+    """Plot the distribution of simulated values with mean and 5-95 percentile lines."""
+    import numpy as np
+    values = np.asarray(values)
+    mean = values.mean()
+    p5, p95 = np.percentile(values, [5, 95])
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.hist(values, bins=bins, color="steelblue", edgecolor="white")
+    ax.axvline(mean, color="black", linestyle="--", linewidth=1, label=f"mean {mean:,.0f}")
+    ax.axvline(p5, color="red", linestyle=":", linewidth=1, label="5th pct")
+    ax.axvline(p95, color="red", linestyle=":", linewidth=1, label="95th pct")
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Frequency")
+    ax.legend()
+    plt.show()
+    return fig, ax
