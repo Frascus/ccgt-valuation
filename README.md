@@ -2,8 +2,10 @@
 
 A dynamic-programming solver for the optimal dispatch of a combined-cycle gas
 turbine (CCGT) power plant, valued as a strip of spark-spread options under
-realistic operational constraints. Applied to 2023 Italian day-ahead
-electricity prices (PUN) and Dutch TTF gas prices.
+realistic operational constraints. The worked example uses 2023 Italian
+day-ahead electricity prices (PUN) and Dutch TTF gas prices; a Monte Carlo
+extension resamples 2023–2025 into synthetic years to get a distribution of
+annual value.
 
 ## The problem
 
@@ -75,17 +77,36 @@ The constrained optimum still beats the must-run baseline by **€9.1M**, the
 value of the option to shut the plant down. `analysis.ipynb` shows this
 decomposition as a waterfall chart (`plotting.plot_value_waterfall`).
 
+## Monte Carlo (value distribution)
+
+The 2023 figures are a single historical path. To see the *distribution* of
+value, synthetic years are built by **monthly block bootstrap** — each calendar
+month is drawn from a random year in 2023–2025
+(`scenarios.generate_year_bootstrap_monthly`) — and the DP is solved on each.
+Over 1,000 scenarios (random seed fixed for reproducibility):
+
+| | Annual gross margin | Start-ups |
+|--------------|--------------------:|----------:|
+| Mean | €73.0M | 146 |
+| 5th–95th percentile | €63.9M – €82.3M | 113 – 177 |
+
+Each path is solved with **perfect foresight**, so these values are an **upper
+bound** on what is realisable, not an operating strategy. 2022 is excluded from
+the resampling pool as a structural-break (energy-crisis) outlier.
+`analysis.ipynb` plots both distributions with `plotting.plot_distribution`.
+
 ## Project structure
 
 ```
 ccgt-valuation/
 ├── data/
-│   └── raw/                # PUN and TTF price data + SOURCES.md
-├── output/                 # generated results (git-ignored): dispatch CSV + summary + value waterfall plot
+│   └── raw/                # PUN (2022–2025) and TTF price data + SOURCES.md
+├── output/                 # generated results (git-ignored): dispatch CSV, summary, plots
 ├── data_loader.py          # load and align hourly PUN with daily TTF prices
-├── dispatch.py             # spark spread, allowed transitions, DP solver
-├── plotting.py             # spark-spread and value-decomposition plots
-├── analysis.ipynb          # loads data, runs the solver, shows results
+├── dispatch.py             # spark spread, DP solver, Monte Carlo wrapper
+├── plotting.py             # spark-spread, waterfall and distribution plots
+├── scenarios.py            # synthetic price years (monthly block bootstrap)
+├── analysis.ipynb          # loads data, runs the solver and the Monte Carlo
 ├── requirements.in         # direct dependencies
 ├── requirements.txt        # pinned lock, compiled from requirements.in
 └── README.md
@@ -102,10 +123,13 @@ ccgt-valuation/
 - **`dispatch.py`** — the core logic: computing the clean spark spread,
   enumerating the legal switch choices from a state, applying a state
   transition, and the dynamic-programming solver that returns the optimal value
-  together with the optimal on/off profile (plus a start-up counter).
-- **`plotting.py`** — `plot_series_vs_threshold`, used to visualise the spark
-  spread against zero, and `plot_value_waterfall`, the ideal→optimal value
-  decomposition.
+  together with the optimal on/off profile (plus a start-up counter). Also a
+  Monte Carlo wrapper that solves the DP over many synthetic years.
+- **`plotting.py`** — `plot_series_vs_threshold` (spark spread against zero),
+  `plot_value_waterfall` (the ideal→optimal value decomposition) and
+  `plot_distribution` (Monte Carlo histograms).
+- **`scenarios.py`** — `generate_year_bootstrap_monthly`, which builds a
+  synthetic year by drawing each calendar month from a random historical year.
 
 ## Data
 
@@ -113,8 +137,10 @@ ccgt-valuation/
   (Gestore dei Mercati Energetici), €/MWh.
 - **TTF** — daily Dutch TTF natural gas futures settlement price, €/MWh.
 
-Full provenance for each file is documented in `data/raw/SOURCES.md`. Raw files
-are kept untouched; all cleaning happens downstream in `data_loader.py`.
+Data for 2022–2025 is included; 2023 is the worked example, and any of these
+years can be selected in the notebook. Full provenance for each file is
+documented in `data/raw/SOURCES.md`. Raw files are kept untouched; all cleaning
+happens downstream in `data_loader.py`.
 
 ## Running it
 
@@ -124,10 +150,11 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Then open `analysis.ipynb` and run the cells: it loads the price data, computes
-the spark spread, runs the three strategies, shows the waterfall decomposition,
-and writes the optimal hourly dispatch and a text summary to `output/`, where
-also the value waterfall plot is saved.
+Then open `analysis.ipynb` and run it top to bottom: it loads the price data
+(the year is set at the top of the notebook), computes the spark spread, runs the three
+strategies, shows the waterfall decomposition, and finally the Monte Carlo over
+resampled years. The optimal hourly dispatch, a text summary and the plots are
+written to `output/`.
 
 ## Modelling assumptions
 
@@ -139,4 +166,11 @@ also the value waterfall plot is saved.
 - The model captures the operating margin of dispatch (revenues net of fuel,
   CO₂, and start-up costs); fixed plant costs and taxes are out of scope, as they
   do not affect the hour-by-hour dispatch decision.
+- The Monte Carlo solves each synthetic year with perfect foresight, so its
+  distribution is an upper bound on realisable value, not the outcome of a
+  causal (limited-foresight) operating policy.
+
+## License
+
+Released under the MIT License — see [`LICENSE`](LICENSE).
 

@@ -1,25 +1,37 @@
+"""
+CCGT dispatch: clean spark spread, state transitions under minimum
+up/down-time, and the dynamic-programming solver for the optimal on/off
+profile. Also a Monte Carlo wrapper over synthetic price years.
+"""
+
 import numpy as np
 
 def compute_spark_spread(*, pun_price, ttf_price, heat_rate, emission_factor, co2_price):
     """
-    function that computes hourly spark spread
+    Clean spark spread (EUR/MWh): power price net of fuel and carbon cost.
+
+        spark_spread = pun_price - heat_rate * ttf_price - emission_factor * co2_price
+
+    Accepts scalars or aligned array-likes.
     """
     return pun_price - heat_rate * ttf_price - emission_factor * co2_price
 
 
 
 
-
 def update_state(
-        *, 
-        current_state, 
-        switching, 
+        *,
+        current_state,
+        switching,
         min_on_time,
         min_off_time
     ):
     """
-    Compute and return the new state starting from current one and based 
-    on the decision about switching or not
+    Return the state one hour ahead, given the current state and the
+    switch decision.
+
+    A state is (status, hours_in_status), the hour counter capped at the
+    minimum up/down-time. Switching is only legal once that minimum is met.
     """
     if current_state[0]=="ON":
         if switching:
@@ -49,14 +61,15 @@ def update_state(
     return new_state
 
 def compute_allowed_switch_choices(
-        *, 
-        current_state, 
+        *,
+        current_state,
         min_on_time,
         min_off_time
     ):
     """
-    Returns a list of legal choices about switching or not the state
-    based on current state
+    Return the legal switch decisions from the current state: [False]
+    while the minimum up/down-time is not yet met, [False, True] once
+    switching is allowed.
     """
 
     if current_state[0]=="ON":
@@ -73,8 +86,8 @@ def compute_allowed_switch_choices(
 
 
 def compute_optimal_choice_and_profit(
-        *, 
-        current_state, 
+        *,
+        current_state,
         min_on_time,
         min_off_time,
         spark_spread,
@@ -83,9 +96,14 @@ def compute_optimal_choice_and_profit(
         ccgt_power,
     ):
 
-    """ 
-    compute and return the best possible revenue onward and the 
-    corresponding switching decision
+    """
+    Bellman step for one state at one hour: return (best value-to-go,
+    switch decision).
+
+    For each legal choice, add this hour's margin (spark_spread * power if
+    the resulting status is ON, else 0), less the start-up cost when the
+    plant switches on, to the best value-to-go of the successor state, and
+    keep the choice with the highest total.
     """
 
     allowed_switch_choices=compute_allowed_switch_choices(
@@ -94,7 +112,7 @@ def compute_optimal_choice_and_profit(
         min_off_time=min_off_time
         )
 
-    possible_revenues_onward=[] 
+    possible_revenues_onward=[]
 
     for switch in allowed_switch_choices:
         new_state=update_state(
@@ -104,8 +122,8 @@ def compute_optimal_choice_and_profit(
             min_off_time=min_off_time
             )
 
-        hourly_revenue=( 
-            spark_spread*ccgt_power 
+        hourly_revenue=(
+            spark_spread*ccgt_power
             if new_state[0]=="ON" else 0
         )
         switch_on_cost_hourly = (
@@ -127,10 +145,11 @@ def compute_optimal_choice_and_profit(
 
 
 def compute_possible_states(*, min_on_time, min_off_time):
-    """ 
-    computes the list of possible states, each one defined by status
-    ON or OFF and by the time spent in that status (capped at its minimum
-    required time in that status before switching is possible)
+    """
+    Enumerate the reachable states (status, hours_in_status), with the
+    hour counter capped at the minimum required time in that status: the
+    capped state is absorbing, since beyond the minimum only "switching
+    allowed" matters.
     """
     possible_states=[
     ]
@@ -145,11 +164,20 @@ def compute_possible_states(*, min_on_time, min_off_time):
 
 
 def compute_optimal_dispatch(*, hourly_prices, constraints):
-    """ 
-    Return a tuple containing the optimal ON/OFF status profile for the turbine,
-    as a list of boolean (True for ON, False for OFF),
-    and the corresponding optimal value extracted,
-    given hourly prices and physical costraints.
+    """
+    Solve the optimal dispatch by backward induction.
+
+    Parameters
+    ----------
+    hourly_prices : DataFrame with a 'spark_spread' column (EUR/MWh), one
+        row per hour in chronological order.
+    constraints : dict with keys 'min_on_time', 'min_off_time',
+        'switch_on_cost' (EUR) and 'ccgt_power' (MW).
+
+    Returns
+    -------
+    (is_on_dispatch, optimal_value) : the optimal on/off profile as a bool
+        array (True = ON) and the corresponding total margin (EUR).
     """
     min_on_time=constraints["min_on_time"]
     min_off_time=constraints["min_off_time"]
@@ -157,24 +185,24 @@ def compute_optimal_dispatch(*, hourly_prices, constraints):
     ccgt_power=constraints["ccgt_power"]
 
     possible_states=compute_possible_states(
-        min_off_time=min_off_time, 
+        min_off_time=min_off_time,
         min_on_time=min_on_time,
         )
 
     total_hours=len(hourly_prices)
 
-    #creating list of dict
+    # value-to-go for every (hour, state); one extra slot for the terminal boundary
     max_profit_onward=[
         {state:None for state in possible_states}
         for _ in range(total_hours+1)
     ]
 
-    #initializing the final+1 hour
+    # terminal condition: nothing left to earn after the last hour
     max_profit_onward[total_hours]={
         state:0 for state in possible_states
     }
 
-    #creating list of dict
+    # optimal switch decision for every (hour, state)
     is_switching=[
         {state:None for state in possible_states}
         for _ in range(total_hours)
@@ -196,6 +224,7 @@ def compute_optimal_dispatch(*, hourly_prices, constraints):
                 )
             )
 
+    # reconstruct the optimal on/off path forward from the initial state
     is_on_dispatch=[]
     current_state=("OFF",min_off_time)
     is_on=False
@@ -218,12 +247,12 @@ def compute_optimal_dispatch(*, hourly_prices, constraints):
 
 
 def count_startups(is_on_dispatch):
-    """ 
-    compute the number of startups, for cost estimation purpose, 
-    fron the optimal profile
+    """
+    Count start-ups (OFF -> ON transitions) in a dispatch profile; the
+    plant is assumed OFF before the first hour.
     """
     is_on_dispatch_extended=np.concatenate(([False], is_on_dispatch))
-    
+
     return (
         ((~is_on_dispatch_extended)[:-1] & is_on_dispatch_extended[1:])
         .sum()
@@ -231,21 +260,20 @@ def count_startups(is_on_dispatch):
 
 
 def monte_carlo_profits(*, year_generator, constraints, n_scenarios):
-        """
-        Run n_scenarios: generate a synthetic year, solve optimal dispatch,
-        collect the optimal profit of each. Return the list of profits.
-        """
-        profits=[]
-        n_startups=[]
-        for _ in range(n_scenarios):
-            synthetic_year=year_generator()
-            is_on_dispatch, optimal_profit=compute_optimal_dispatch(
-                hourly_prices=synthetic_year,
-                constraints=constraints
-            )
-            profits.append(optimal_profit)
-            n_startups.append(count_startups(is_on_dispatch))
-        return profits, n_startups
+    """
+    Run n_scenarios: for each, generate a synthetic price year, solve the
+    optimal dispatch, and collect its optimal profit and start-up count.
 
-
-
+    Returns (profits, n_startups), two lists of length n_scenarios.
+    """
+    profits=[]
+    n_startups=[]
+    for _ in range(n_scenarios):
+        synthetic_year=year_generator()
+        is_on_dispatch, optimal_profit=compute_optimal_dispatch(
+            hourly_prices=synthetic_year,
+            constraints=constraints
+        )
+        profits.append(optimal_profit)
+        n_startups.append(count_startups(is_on_dispatch))
+    return profits, n_startups
