@@ -23,9 +23,8 @@ Relevant columns:
 
 ## ttf_2023.csv
 
-Source: https://www.kaggle.com/datasets/arushirawat/dutch-ttf-natural-gas-futures-historical-dataset/data
-(downloaded: 12 Sept 2026).
-Original name: Dutch TTF Natural Gas Futures Historical Data UK (1).csv
+Source:https://www.investing.com/commodities/dutch-ttf-gas-c1-futures-historical-data
+(downloaded: 21 Sept 2026).
 
 Dutch TTF natural gas futures, daily. Covers multiple years; only 2023 is used
 (filtered in cleaning). Rows are in reverse chronological order.

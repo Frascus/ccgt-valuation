@@ -77,7 +77,7 @@ def load_pun_ttf_prices(
 
     df_ttf["date"] = pd.to_datetime(
         df_ttf["date"],
-        format="%d/%m/%Y",
+        format="%m/%d/%Y",
     )
 
     # ---------------------------------------------------------
@@ -185,3 +185,5 @@ def _check_prices(prices):
         f"({n_24} x 24h, one 23h, one 25h), "
         f"no missing values"
     )
+
+
